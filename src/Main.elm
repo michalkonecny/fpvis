@@ -166,20 +166,23 @@ rat2FP numer denom =
             (toFloat numer) / (toFloat denom)
 
         s =
-            if x < 0 then
+            if numer * denom < 0 then
                 1
             else
                 0
 
-        ( e, isDenorm, isOverflow ) =
-            if x == 0 then
-                ( 0, True, False )
+        ( e, isDenorm, isOverflow, isNaN ) =
+            if numer == 0 then
+                if denom == 0 then
+                    ( 0, False, False, True )
+                else
+                    ( 0, True, False, False )
             else
                 let
                     e =
                         floor <| logBase 2 (abs x)
                 in
-                    ( e, e <= -eOffset, e > eOffset )
+                    ( e, e <= -eOffset, e > eOffset, False )
 
         fE =
             fSize - e
@@ -188,6 +191,8 @@ rat2FP numer denom =
             { s = s, eee = eee000, fff = toBinary fSize ((numerA * 2 ^ (fSize + eOffset - 1)) // denomA) }
         else if isOverflow then
             { s = s, eee = eee111, fff = fff000 }
+        else if isNaN then
+            { s = s, eee = eee111, fff = fff001 }
         else if fE > 0 then
             { s = s, eee = toBinary eSize (e + eOffset), fff = toBinary fSize (((numerA * 2 ^ fE) // denomA) - 2 ^ (fSize)) }
         else
@@ -207,6 +212,10 @@ eee111 =
 fff000 : Dict Int Bit
 fff000 =
     Dict.fromList <| List.map (\i -> ( i, 0 )) <| List.range 0 (fSize - 1)
+
+fff001 : Dict Int Bit
+fff001 =
+    Dict.insert 0 1 fff000
 
 
 fff111 : Dict Int Bit
@@ -241,7 +250,7 @@ fpInfinity =
 
 fpQNaN : FP
 fpQNaN =
-    { s = 0, eee = eee111, fff = Dict.insert 0 1 fff000 }
+    { s = 0, eee = eee111, fff = fff001 }
 
 
 type Msg
@@ -322,15 +331,15 @@ update msg model =
                     case ( roundFrom.numer, roundFrom.denom ) of
                         ( Just numer, Just denom ) ->
                             let
-                                x =
-                                    (toFloat numer) / (toFloat denom)
+                                fp = 
+                                    rat2FP numer denom
 
-                                e =
-                                    floor <| logBase 2 (abs x)
+                                (_, e, _, _) = 
+                                    decodeFP fp
                             in
                                 { model
                                     | roundFrom = roundFromNew
-                                    , fp = rat2FP numer denom
+                                    , fp = fp
                                     , edgeEx8 = min edgeEx8max (max edgeEx8min (edgeEx8forE e))
                                 }
 
@@ -525,7 +534,9 @@ view model =
                 roundingReport =
                     case roundFromMaybeX of
                         Just x ->
-                            if not fpFinite then
+                            if fpNaN then
+                                "NaN"
+                            else if not fpFinite then
                                 "overflow"
                             else if fpValue == 0 && x /= 0 then
                                 "underflow"
