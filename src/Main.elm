@@ -15,12 +15,12 @@ import Json.Decode as Json
 
 eSize : Int
 eSize =
-    4
+    3
 
 
 fSize : Int
 fSize =
-    5
+    3
 
 
 eOffset : Int
