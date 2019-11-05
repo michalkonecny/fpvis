@@ -1,22 +1,18 @@
 module Main exposing (..)
 
--- import Collage as C exposing (collage)
--- import Color
--- import Element
-
 import Browser as B
 import Browser.Dom as B
 import Browser.Events as BE
+import Collage as C
+import Collage.Render exposing (svg)
+import Collage.Text as CT
+import Color
 import Dict exposing (Dict)
 import Html as H exposing (Html)
 import Html.Attributes as A
 import Html.Events as HE
 import Json.Decode as Json
 import Task
-
-
-
--- import Text
 
 
 eSize : Int
@@ -34,14 +30,20 @@ eOffset =
     2 ^ (eSize - 1) - 1
 
 
-main : Program Never Model Msg
+main : Program () Model Msg
 main =
     B.document
-        { init = ( initModel, Task.perform (Resize << .scene) B.getViewport )
+        { init = always ( initModel, Task.perform (Resize << getViewportSize) B.getViewport )
         , view = view
         , update = \msg m -> ( update msg m, Cmd.none )
         , subscriptions = subscriptions
         }
+
+
+getViewportSize viewport =
+    { width = round viewport.scene.width
+    , height = round viewport.scene.height
+    }
 
 
 type alias Size =
@@ -292,7 +294,7 @@ type Msg
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    BE.onResize Resize
+    BE.onResize (\w h -> Resize { width = w, height = h })
 
 
 update : Msg -> Model -> Model
@@ -372,7 +374,7 @@ update msg model =
                     model
 
 
-view : Model -> Html Msg
+view : Model -> B.Document Msg
 view model =
     let
         fp =
@@ -408,7 +410,7 @@ view model =
 
         sECell =
             H.td [ borderA ]
-                [ H.text ("s=" ++ String.fromInt (signB2S fp.s)) ]
+                [ H.text ("s=" ++ signB2S fp.s) ]
 
         eECell =
             let
@@ -456,7 +458,7 @@ view model =
 
                     else
                         ( l, r )
-            in 
+            in
             let
                 ( lPre, rPre ) =
                     shiftBy e [ lead ] (List.reverse <| Dict.values fp.fff)
@@ -562,10 +564,10 @@ view model =
                     formatMaybeN model.roundFrom.denom
 
                 setNumer numerS_ =
-                    RoundFromNumer <| Result.withDefault 1 (String.toInt numerS_)
+                    RoundFromNumer <| Maybe.withDefault 1 (String.toInt numerS_)
 
                 setDenom denomS_ =
-                    RoundFromDenom <| Result.withDefault 1 (String.toInt denomS_)
+                    RoundFromDenom <| Maybe.withDefault 1 (String.toInt denomS_)
 
                 roundingReport =
                     case roundFromMaybeX of
@@ -615,14 +617,14 @@ view model =
             ( toFloat w, toFloat h )
 
         bgr =
-            C.filled Color.lightBrown (C.rect wF hF)
+            C.filled (C.uniform Color.lightBrown) (C.rectangle wF hF)
 
         xline =
             let
                 maxXC =
                     evalFP fpMax * wF / (2 * edgeVal)
             in
-            C.traced (C.solid Color.black) (C.segment ( -maxXC, 0 ) ( maxXC, 0 ))
+            C.traced (C.solid 1 (C.uniform Color.black)) (C.segment ( -maxXC, 0 ) ( maxXC, 0 ))
 
         edgeE =
             toFloat (2 ^ eSize - eOffset - 2)
@@ -638,7 +640,7 @@ view model =
                 y =
                     hF / (level * 10)
             in
-            C.traced (C.solid Color.black) (C.segment ( xc, y ) ( xc, -y ))
+            C.traced (C.solid 1 (C.uniform Color.black)) (C.segment ( xc, y ) ( xc, -y ))
 
         label x n mm =
             let
@@ -655,17 +657,17 @@ view model =
                     hF / 10
 
                 numAt y i =
-                    C.move ( xc, y ) <| C.text <| Text.height theight <| Text.fromString (String.fromInt i)
+                    C.shift ( xc, y ) <| C.rendered <| CT.size (round theight) <| CT.fromString (String.fromInt i)
             in
             case mm of
                 Nothing ->
                     numAt yn n
 
-                Just m ->
+                Just m_ ->
                     C.group
                         [ numAt yn n
-                        , C.traced (C.solid Color.black) <| C.segment ( xc - theight, (ym + yn) / 2 ) ( xc + theight, (ym + yn) / 2 )
-                        , numAt ym m
+                        , C.traced (C.solid 1 (C.uniform Color.black)) <| C.segment ( xc - theight, (ym + yn) / 2 ) ( xc + theight, (ym + yn) / 2 )
+                        , numAt ym m_
                         ]
 
         pointer x =
@@ -673,7 +675,7 @@ view model =
                 xc =
                     x * wF / (2 * edgeVal)
             in
-            C.outlined (C.solid Color.red)
+            C.outlined (C.solid 1 (C.uniform Color.red))
                 (C.polygon [ ( xc, 2 * hF / 10 ), ( xc - wF / 50, 4 * hF / 10 ), ( xc + wF / 50, 4 * hF / 10 ) ])
 
         ( exponents, fractions ) =
@@ -706,66 +708,72 @@ view model =
 
         edgePointLabel ( x, eee ) =
             let
-                s =
+                s_ =
                     if x < 0 then
                         -1
 
                     else
                         1
 
-                e =
+                e_ =
                     bits2Int eee - eOffset
             in
             if x == 0 then
                 label x 0 Nothing
 
-            else if e + eOffset == 2 ^ eSize - 1 then
-                label x s (Just 0)
+            else if e_ + eOffset == 2 ^ eSize - 1 then
+                label x s_ (Just 0)
 
             else if e >= 0 then
-                label x (s * 2 ^ e) Nothing
+                label x (s_ * 2 ^ e_) Nothing
 
             else
-                label x s (Just <| 2 ^ -e)
+                label x s_ (Just <| 2 ^ -e_)
 
         numberline =
-            collage w h <|
+            -- collage w h <|
+            C.group <|
                 [ bgr, xline, pointer fpValue ]
                     ++ List.map (tick 2) allPoints
                     ++ List.map (tick 1) edgePoints
                     ++ (List.map edgePointLabel <| List.map2 (\a b -> ( a, b )) edgePoints exponents)
+
+        mainDiv =
+            H.div []
+                [ valButtons
+                , roundFromEntry
+                , fptable
+                , svg <| numberline
+                , H.text "zoom:"
+                , slider
+                    { makeMsg = SetEdgeEx8
+                    , minValue = edgeEx8min
+                    , maxValue = edgeEx8max
+                    , model = model.edgeEx8
+                    }
+                , H.br [] []
+                , H.text "(c) 2019 Michal Konečný, Aston University, "
+                , H.a [ A.href "http://elm-lang.org/", A.target "_blank" ] [ H.text "powered by Elm" ]
+                ]
     in
-    H.div []
-        [ valButtons
-        , roundFromEntry
-        , fptable
-        , Element.toHtml <| numberline
-        , H.text "zoom:"
-        , slider
-            { makeMsg = SetEdgeEx8
-            , minValue = edgeEx8min
-            , maxValue = edgeEx8max
-            , model = model.edgeEx8
-            }
-        , H.br [] []
-        , H.text "(c) 2019 Michal Konečný, Aston University, "
-        , H.a [ A.href "http://elm-lang.org/", A.target "_blank" ] [ H.text "powered by Elm" ]
-        ]
+    { title = "Floating-point number visualisation"
+    , body = [ mainDiv ]
+    }
 
 
 borderA : H.Attribute msg
 borderA =
-    A.style [ ( "border", "1px solid black" ) ]
+    A.style "border" "1px solid black"
 
 
 widthA : String -> H.Attribute msg
-widthA w =
-    A.style [ ( "width", w ) ]
+widthA wS =
+    A.style "width" wS
 
 
 fontsizeA : Int -> H.Attribute msg
 fontsizeA percent =
-    A.style [ ( "font-size", String.fromInt percent ++ "%" ) ]
+    A.style "font-size" (String.fromInt percent ++ "%")
 
 
 slider : { makeMsg : Int -> Msg, minValue : Int, maxValue : Int, model : Int } -> Html Msg
@@ -776,6 +784,6 @@ slider { makeMsg, minValue, maxValue, model } =
         , A.max <| String.fromInt maxValue
         , A.value <| String.fromInt model
         , widthA "80%"
-        , HE.onInput (makeMsg << Result.withDefault minValue << String.toInt)
+        , HE.onInput (makeMsg << Maybe.withDefault minValue << String.toInt)
         ]
         []
