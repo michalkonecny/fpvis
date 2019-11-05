@@ -4,7 +4,7 @@ import Browser as B
 import Browser.Dom as B
 import Browser.Events as BE
 import Collage as C
-import Collage.Render exposing (svg)
+import Collage.Render exposing (svgBox)
 import Collage.Text as CT
 import Color
 import Dict exposing (Dict)
@@ -611,7 +611,7 @@ view model =
 
         --, ("max", fpMax)]
         ( w, h ) =
-            ( model.wsize.width, model.wsize.height // 5 )
+            ( model.wsize.width - 20, model.wsize.height // 5 )
 
         ( wF, hF ) =
             ( toFloat w, toFloat h )
@@ -724,26 +724,25 @@ view model =
             else if e_ + eOffset == 2 ^ eSize - 1 then
                 label x s_ (Just 0)
 
-            else if e >= 0 then
+            else if e_ >= 0 then
                 label x (s_ * 2 ^ e_) Nothing
 
             else
                 label x s_ (Just <| 2 ^ -e_)
 
         numberline =
-            -- collage w h <|
             C.group <|
-                [ bgr, xline, pointer fpValue ]
+                (List.map edgePointLabel <| List.map2 (\a b -> ( a, b )) edgePoints exponents)
                     ++ List.map (tick 2) allPoints
                     ++ List.map (tick 1) edgePoints
-                    ++ (List.map edgePointLabel <| List.map2 (\a b -> ( a, b )) edgePoints exponents)
+                    ++ [ pointer fpValue, xline, bgr ]
 
         mainDiv =
             H.div []
                 [ valButtons
                 , roundFromEntry
                 , fptable
-                , svg <| numberline
+                , svgBox ( wF, hF ) <| numberline
                 , H.text "zoom:"
                 , slider
                     { makeMsg = SetEdgeEx8
